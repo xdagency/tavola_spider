@@ -50,6 +50,9 @@ const Game = bookshelf.Model.extend({
     // Console log how many items were added to DB
 
 
+// Counter
+let counter = 0;
+
 // The low end of the range we will be searching
 const minRange = process.argv[2];
 // The high end of the range we will be searching
@@ -113,28 +116,42 @@ function bgg(id, callback) {
 
             parseString(xml, function(err, result) {
 
-                // First make sure item we are parsing is a BoardGame
-                if (result.items.item[0].$.type !== "boardgame") {
-                    console.log("This is not a boardgame!");
+                // First make sure something exists at this ID
+                if (result.items.item === undefined) {
+                    console.log("Nothing at this ID.")
                     return;
                 }
 
+                // Otherwise save the main game object into a variable
+                let gameObject = result.items.item[0];
+
+                // Then make sure item we are parsing is a BoardGame
+                if (gameObject.$.type !== "boardgame") {
+                    console.log("This is not a boardgame.");
+                    return;
+                }
+                
+                // console.log(JSON.stringify(result));
+                // console.log(gameObject.statistics[0].ratings[0].average[0].$.value);
 
                 // Game
                 game = {
-                    name: result.items.item[0].name[0].$.value,
-                    image: result.items.item[0].image[0],
+                    name: gameObject.name[0].$.value,
+                    image: gameObject.image[0],
                     bgg_link: 'https://www.boardgamegeek.com/boardgame/' + toScrape[0] + '/',
                     game_id: toScrape[0],
-                    min_players: Number(result.items.item[0].minplayers[0].$.value),
-                    max_players: Number(result.items.item[0].maxplayers[0].$.value),
-                    min_time: Number(result.items.item[0].minplaytime[0].$.value),
-                    max_time: Number(result.items.item[0].maxplaytime[0].$.value),
-                    avg_time: Number(result.items.item[0].playingtime[0].$.value),
-                    year: Number(result.items.item[0].yearpublished[0].$.value),
+                    min_players: Number(gameObject.minplayers[0].$.value) || 1,
+                    max_players: Number(gameObject.maxplayers[0].$.value) || 1,
+                    min_time: Number(gameObject.minplaytime[0].$.value) || 1,
+                    max_time: Number(gameObject.maxplaytime[0].$.value) || 1,
+                    avg_time: Number(gameObject.playingtime[0].$.value) || 1,
+                    year: Number(gameObject.yearpublished[0].$.value),
                     age: 0,
                     mechanic: '',
                     category: '',
+                    avg_rating: Number(gameObject.statistics[0].ratings[0].average[0].$.value) || 0,
+                    geek_rating: Number(gameObject.statistics[0].ratings[0].bayesaverage[0].$.value) || 0,
+                    num_votes: Number(gameObject.statistics[0].ratings[0].usersrated[0].$.value) || 0,
                 }
 
 
@@ -167,7 +184,7 @@ function bgg(id, callback) {
             })
             
             // See what our object looks like
-            console.log(game);
+            // console.log(game);
 
          })
 
