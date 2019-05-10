@@ -18,8 +18,6 @@ const knex = require('knex')({
 // then connect bookshelf with knex
 const bookshelf = require('bookshelf')(knex);
 
-// Variables
-const PORT = process.env.PORT || 8181;
 
 // headers to fix CORS issues
 app.use((req, res, next) => {
@@ -35,6 +33,11 @@ app.use((req, res, next) => {
 // Games model
 const Game = bookshelf.Model.extend({
     tableName: 'games'
+});
+
+// Users model
+const User = bookshelf.Model.extend({
+    tableName: 'users'
 });
 
 
@@ -85,7 +88,11 @@ function checkCurrentDB(min, max, callback) {
                 // If i === max it's the last ID we are looking through
                 // so we can stop the process here
                 if (i == max) {
-                    console.log('To Scrape:', toScrape);
+
+                    // print out which games are to be scraped
+                    console.log('About to scrape', toScrape.length, 'games. List:', toScrape);
+
+                    // hit the callback
                     return callback();
                 }
 
@@ -94,15 +101,15 @@ function checkCurrentDB(min, max, callback) {
                 console.log('Checking local DB error:', error);
             })
 
-    }
+    } // end for loop
 
 }
 
 
-function bgg(id, callback) {
+function getData(id, callback) {
 
-    // Hit the BGG API
-    axios.get('https://www.boardgamegeek.com/xmlapi2/thing?id=' + toScrape[0] + '&stats=1')
+    // Hit the BGG API (with stats turned on)
+    axios.get('https://www.boardgamegeek.com/xmlapi2/thing?id=' + id + '&stats=1')
     
          .then(result => {
 
@@ -110,16 +117,20 @@ function bgg(id, callback) {
             // let parser = new DOMParser();
             // Save data/xml from BGG into a variable
             let xml = result.data;
-            
-            // Empty object to save xml data to
-            let game = {}
+
+            // new Game object
+            let gameToSave = {};
 
             parseString(xml, function(err, result) {
+
+                if (err) {
+                    throw err;
+                }
 
                 // First make sure something exists at this ID
                 if (result.items.item === undefined) {
                     console.log("Nothing at this ID.")
-                    return;
+                    return callback(0);
                 }
 
                 // Otherwise save the main game object into a variable
@@ -128,18 +139,19 @@ function bgg(id, callback) {
                 // Then make sure item we are parsing is a BoardGame
                 if (gameObject.$.type !== "boardgame") {
                     console.log("This is not a boardgame.");
-                    return;
+                    return callback(0);
                 }
-                
+
                 // console.log(JSON.stringify(result));
                 // console.log(gameObject.statistics[0].ratings[0].average[0].$.value);
 
                 // Game
-                game = {
-                    name: gameObject.name[0].$.value,
-                    image: gameObject.image[0],
-                    bgg_link: 'https://www.boardgamegeek.com/boardgame/' + toScrape[0] + '/',
-                    game_id: toScrape[0],
+                gameToSave = {
+                    rank: Number(gameObject.statistics[0].ratings[0].ranks[0].rank[0].$.value) || 0,
+                    bgg_link: 'https://www.boardgamegeek.com/boardgame/' + id + '/',
+                    game_id: id,
+                    names: gameObject.name[0].$.value,
+                    image_url: gameObject.image[0],
                     min_players: Number(gameObject.minplayers[0].$.value) || 1,
                     max_players: Number(gameObject.maxplayers[0].$.value) || 1,
                     min_time: Number(gameObject.minplaytime[0].$.value) || 1,
@@ -158,11 +170,10 @@ function bgg(id, callback) {
                 // Game age
                 // Check if year published is greater than 0
                 // If it is calculate the age, if not set age to 0
-                game.age = result.items.item[0].yearpublished[0].$.value > 0 ? (new Date().getFullYear() - result.items.item[0].yearpublished[0].$.value) : 0;
-
+                gameToSave.age = gameObject.yearpublished[0].$.value > 0 ? (new Date().getFullYear() - gameObject.yearpublished[0].$.value) : 0;
 
                 // Mechanics and categories
-                let mechanicsAndCategories = result.items.item[0].link;
+                let mechanicsAndCategories = gameObject.link;
 
                 // Loop through the categories and mechanics
                 for (let i = 0; i < mechanicsAndCategories.length; i++) {
@@ -170,60 +181,117 @@ function bgg(id, callback) {
                     // If it's a category
                     // Save to category string in game object
                     if (mechanicsAndCategories[i].$.type === "boardgamecategory") {
-                        game.category += mechanicsAndCategories[i].$.value + ', ';
+                        gameToSave.category += mechanicsAndCategories[i].$.value + ', ';
 
                     // If it's a mechanic
                     // Save to mechanic string in game object
                     } else if (mechanicsAndCategories[i].$.type === "boardgamemechanic") {
-                        game.mechanic += mechanicsAndCategories[i].$.value + ', ';
+                        gameToSave.mechanic += mechanicsAndCategories[i].$.value + ', ';
                     }
 
                 }
 
-
-            })
+            }) // end parseString()
             
             // See what our object looks like
-            // console.log(game);
+            // console.log(gameToSave);
+            return callback(gameToSave);
 
-         })
-
-         .then(result => {
-            
-            // After all the data from BGG is grabbed, hit the callback function
-            return callback();
          })
 
          .catch(error => {
-             console.log('Hit BGG API Error:', error);
+             console.log(error);
          })
 
 }
 
+function saveData(game) {
 
+    let newGame = new Game ({
+        rank: game.rank,
+        bgg_link: game.bgg_link,
+        game_id: game.game_id,
+        names: game.names,
+        image_url: game.image_url,
+        min_players: game.min_players,
+        max_players: game.max_players,
+        min_time: game.min_time,
+        max_time: game.max_time,
+        avg_time: game.avg_time,
+        year: game.year,
+        age: game.age,
+        mechanic: game.mechanic,
+        category: game.category,
+        avg_rating: game.avg_rating,
+        geek_rating: game.geek_rating,
+        num_votes: game.num_votes,
+    });
+
+    // Save the game to the DB
+    newGame.save(null, {method: 'insert'})
+        
+        .then(savedGame => {
+
+            // step counter up
+            counter += 1;
+
+            // print out what we saved to DB
+            // console.log('Saved to DB:', savedGame);
+
+        })
+        
+        .catch(error => {
+            console.log('Error saving to DB', error);
+        });
+
+} 
+
+// First, check if we already have an of these IDs in the DB already
 checkCurrentDB(minRange, maxRange, () => {
-    bgg(1, () => {
-        process.exit();
-    })
+
+    // After we've looped through all the IDs and found pushed only IDs that are not in the local DB
+    // loop through each ID we don't have and scrape from BGG, then save to DB
+    toScrape.forEach((id) => {
+
+        getData(id, (gameToSave) => {
+
+            if (gameToSave.names === undefined) {
+                return;
+            } else {
+                console.log("Gonna save", gameToSave.names, 'to DB. It is for a max of', gameToSave.max_players, 'players');
+                saveData(gameToSave);
+            }
+        });
+
+    });
+
+    // while(counter > toScrape.length) {}
+    
 });
 
-// axios.get('https://www.boardgamegeek.com/xmlapi2/thing?id=' + process.argv[2])
-//      .then(result => {
-//         // console.log(result.data);
-//         console.log('got data');
-//      })
-//      .then(result => {
-//          process.exit();
-//      })
-//      .catch(error => {
-//         console.log('axios GET error:', error);
-//      })
+// Print out how many games we saved
+console.log('Total games saved:', counter);
+
+// exit the process
+// process.exit();
 
 
-/* ==================== */
-/* LISTEN               */
-/* ==================== */
-
-app.listen(PORT, () => {
-    console.log('We are up on', PORT);
-})
+// let newGame = new Game ({ 
+    // rank: 198274,
+    // bgg_link: 'https://www.boardgamegeek.com/boardgame/10000000/',
+    // game_id: 989898,
+    // names: 'Test game 3',
+    // min_players: 1,
+    // max_players: 99,
+    // avg_time: 50,
+    // min_time: 1,
+    // max_time: 99,
+    // year: 2019,
+    // avg_rating: 7.21,
+    // geek_rating: 9.8,
+    // num_votes: 29087,
+    // image_url: '',
+    // age: 0,
+    // mechanic: 'Foo',
+    // category: 'Bar',
+//  });
