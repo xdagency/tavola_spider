@@ -1,6 +1,4 @@
-const   express = require('express'),
-        app = express(),
-        axios = require('axios'),
+const   axios = require('axios'),
         parseString = require('xml2js').parseString;
 
 
@@ -18,13 +16,6 @@ const knex = require('knex')({
 // then connect bookshelf with knex
 const bookshelf = require('bookshelf')(knex);
 
-
-// headers to fix CORS issues
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    next();
-});
 
 /* ==================== */
 /* MODELS               */
