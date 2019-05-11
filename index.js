@@ -56,6 +56,9 @@ const maxRange = process.argv[3];
 // The array to hold any ID's not found in local DB
 const toScrape = [];
 
+// The arrat to hold any ID's found in local DB
+const toUpdate = [];
+
 
 function checkCurrentDB(min, max, callback) {
 
@@ -71,7 +74,10 @@ function checkCurrentDB(min, max, callback) {
                     toScrape.push(Number(i));
                 }
 
-                // Otherwise do nothing
+                // Otherwise push to our toUpdate array
+                else {
+                    toUpdate.push(Number(i));
+                }
 
             })
             .then(results => {
@@ -81,7 +87,8 @@ function checkCurrentDB(min, max, callback) {
                 if (i == max) {
 
                     // print out which games are to be scraped
-                    console.log('About to scrape', toScrape.length, 'games. List:', toScrape);
+                    console.log('There are', toScrape.length, 'games to scrape. List:', toScrape);
+                    console.log('There are', toUpdate.length, 'games to update. List:', toUpdate);
 
                     // hit the callback
                     return callback();
