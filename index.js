@@ -97,7 +97,7 @@ function checkCurrentDB(min, max, callback) {
 }
 
 
-function getData(id, callback) {
+function getData(id) {
 
     // Hit the BGG API (with stats turned on)
     axios.get('https://www.boardgamegeek.com/xmlapi2/thing?id=' + id + '&stats=1')
@@ -120,8 +120,8 @@ function getData(id, callback) {
 
                 // First make sure something exists at this ID
                 if (result.items.item === undefined) {
-                    console.log("Nothing at this ID.")
-                    return callback(0);
+                    console.log('ID:', id, 'doesn\'t exist');
+                    return 0;
                 }
 
                 // Otherwise save the main game object into a variable
@@ -129,8 +129,8 @@ function getData(id, callback) {
 
                 // Then make sure item we are parsing is a BoardGame
                 if (gameObject.$.type !== "boardgame") {
-                    console.log("This is not a boardgame.");
-                    return callback(0);
+                    console.log('ID:', id, 'is not a boardgame.');
+                    return 0;
                 }
 
                 // console.log(JSON.stringify(result));
@@ -186,7 +186,29 @@ function getData(id, callback) {
             
             // See what our object looks like
             // console.log(gameToSave);
-            return callback(gameToSave);
+            return gameToSave;
+
+         })
+
+         .then(gameToSave => {
+
+            // if the name is undefined it means there was nothing found at this id
+            // so don't run saveData() on this id
+            if (gameToSave.names === undefined) {
+                return;
+            // Otherwise log which game we're saving and run saveData on it
+            } else {
+                console.log("Gonna save:", id, 'titled', gameToSave.names, 'to DB. It is for a max of', gameToSave.max_players, 'players');
+                saveData(gameToSave);
+                return gameToSave.game_id;
+            }
+
+         })
+
+         .then(id => {
+
+            // if this is the last ID
+            // stop the node process
 
          })
 
@@ -198,6 +220,7 @@ function getData(id, callback) {
 
 function saveData(game) {
 
+    // just passing the object was not working, had to pass in every attribute of the object
     let newGame = new Game ({
         rank: game.rank,
         bgg_link: game.bgg_link,
@@ -219,6 +242,7 @@ function saveData(game) {
     });
 
     // Save the game to the DB
+    // use insert method to ensure it's always inserting a new record at a new DB ID
     newGame.save(null, {method: 'insert'})
         
         .then(savedGame => {
@@ -244,15 +268,7 @@ checkCurrentDB(minRange, maxRange, () => {
     // loop through each ID we don't have and scrape from BGG, then save to DB
     toScrape.forEach((id) => {
 
-        getData(id, (gameToSave) => {
-
-            if (gameToSave.names === undefined) {
-                return;
-            } else {
-                console.log("Gonna save", gameToSave.names, 'to DB. It is for a max of', gameToSave.max_players, 'players');
-                saveData(gameToSave);
-            }
-        });
+            getData(id);
 
     });
 
@@ -265,6 +281,11 @@ console.log('Total games saved:', counter);
 
 // exit the process
 // process.exit();
+
+
+
+
+
 
 
 // let newGame = new Game ({ 
