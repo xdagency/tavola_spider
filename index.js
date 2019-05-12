@@ -43,10 +43,6 @@ const User = bookshelf.Model.extend({
 // Count every time a game was added to DB
     // Console log how many items were added to DB
 
-
-// Counter
-let counter = 0;
-
 // The low end of the range we will be searching
 const minRange = process.argv[2];
 // The high end of the range we will be searching
@@ -58,6 +54,10 @@ const toScrape = [];
 
 // The arrat to hold any ID's found in local DB
 const toUpdate = [];
+
+// Counter
+let counter = 0;
+let savedCounter = 0;
 
 
 function checkCurrentDB(min, max, callback) {
@@ -91,7 +91,7 @@ function checkCurrentDB(min, max, callback) {
                     console.log('There are', toUpdate.length, 'games to update. List:', toUpdate);
 
                     // hit the callback
-                    return callback();
+                    return callback(toScrape);
                 }
 
             })
@@ -149,7 +149,7 @@ function getData(id) {
                     bgg_link: 'https://www.boardgamegeek.com/boardgame/' + id + '/',
                     game_id: id,
                     names: gameObject.name[0].$.value,
-                    image_url: gameObject.image[0],
+                    image_url: gameObject.image[0] || '',
                     min_players: Number(gameObject.minplayers[0].$.value) || 1,
                     max_players: Number(gameObject.maxplayers[0].$.value) || 1,
                     min_time: Number(gameObject.minplaytime[0].$.value) || 1,
@@ -202,20 +202,18 @@ function getData(id) {
             // if the name is undefined it means there was nothing found at this id
             // so don't run saveData() on this id
             if (gameToSave.names === undefined) {
+
+                // step up counter because this ID has been been scraped
+                counter += 1;
+                // getData(toScrape[counter]);
                 return;
+
             // Otherwise log which game we're saving and run saveData on it
             } else {
                 console.log("Gonna save:", id, 'titled', gameToSave.names, 'to DB. It is for a max of', gameToSave.max_players, 'players');
                 saveData(gameToSave);
                 return gameToSave.game_id;
             }
-
-         })
-
-         .then(id => {
-
-            // if this is the last ID
-            // stop the node process
 
          })
 
@@ -254,8 +252,12 @@ function saveData(game) {
         
         .then(savedGame => {
 
-            // step counter up
+            // step both counters up because this id has been scraped AND saved
             counter += 1;
+            savedCounter += 1;
+
+            // next()
+            // getData(toScrape[counter]);
 
             // print out what we saved to DB
             // console.log('Saved to DB:', savedGame);
@@ -266,26 +268,42 @@ function saveData(game) {
             console.log('Error saving to DB', error);
         });
 
-} 
+}
+
+function processArray(maxLoops) {
+
+    if (counter >= maxLoops) {
+        console.log('Saved a total of', counter, 'games.');
+        process.exit();
+        return;
+    }
+
+    setTimeout(function() {
+        getData(toScrape[counter]);
+    }, 2000);
+
+}
 
 // First, check if we already have an of these IDs in the DB already
 checkCurrentDB(minRange, maxRange, () => {
 
-    // After we've looped through all the IDs and found pushed only IDs that are not in the local DB
+    // After we've looped through all the IDs and pushed only IDs that are not in the local DB
     // loop through each ID we don't have and scrape from BGG, then save to DB
     toScrape.forEach((id) => {
-
-            getData(id);
-
+        // setTimeout(getData, 2000, id);
+        getData(id);
     });
 
-    // while(counter > toScrape.length) {}
-    
+    // if (counter >= toScrape.length) {
+    //     console.log('Saved a total of', counter, 'games.');
+    //     process.exit();
+    // }
+
+    // getData(toScrape[counter]);
+
 });
 
-// Print out how many games we saved
-console.log('Total games saved:', counter);
-
+// while(counter > toScrape.length) {}
 // exit the process
 // process.exit();
 
