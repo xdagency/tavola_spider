@@ -1,4 +1,5 @@
 const   axios = require('axios'),
+        config = require('./config'),
         parseString = require('xml2js').parseString;
 
 
@@ -6,11 +7,11 @@ const   axios = require('axios'),
 const knex = require('knex')({
     client: 'postgres',
     connection: {
-        host     : '127.0.0.1',
-        user     : 'postgres',
-        password : 'postgres',
-        database : 'boardgamegen',
-        charset  : 'utf8'
+        host     : config.HOST,
+        user     : config.USER,
+        password : config.PASS,
+        database : config.DB,
+        charset  : config.CHARSET
     }
 });
 // then connect bookshelf with knex
