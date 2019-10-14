@@ -28,75 +28,95 @@ const Game = bookshelf.Model.extend({
 });
 
 // Users model
-const User = bookshelf.Model.extend({
-    tableName: 'users'
-});
+// const User = bookshelf.Model.extend({
+//     tableName: 'users'
+// });
 
 
 // TODOS:
-// Build a function that takes in a range of IDs
-    // Use process.argv arguments
-// First check each ID against the current Database
-// If it exists, do nothing
-// If it doesn't exist hit the BGG API and grab the XML
-    // Make sure to spread out the requests to API (setTimeout?)
-// Extract the needed data and save to my DB
-// Count every time a game was added to DB
-    // Console log how many items were added to DB
+
+// 1- Function that checks ID's from $minRange to $maxRange in the current DB
+        // - Add any IDs not found into a 'toCheck' array
+        // - Add any IDs found to a 'toUpdate' array
+// 2- Function that hits boardGameGeek API /things endpoint
+        // - If it's a boardgame create a object with all the desired data
+        // - Increase counter
+        // - Save that object in a 'toUpdate' array 
+        // - must be a timed/await function to not trigger BGG rate limiting
+// 3- Function that saves the array of 'toUpdate' objects to the local DB
+        // - increase savedCounter[]
+
 
 // The low end of the range we will be searching
 const minRange = process.argv[2];
+
 // The high end of the range we will be searching
 const maxRange = process.argv[3];
-//console.log('Search from', minRange, 'to', maxRange);
 
-// The array to hold any ID's not found in local DB
-const toScrape = [];
+// The array to hold all ID's not found in local DB
+const toCheck = [];
 
-// The arrat to hold any ID's found in local DB
+// The array to hold any ID's found in local DB
 const toUpdate = [];
 
-// Counter
-let counter = 0;
+// Counters
+let checkCounter = 0;
+let updateCounter = 0;
 let savedCounter = 0;
 
 
 function checkCurrentDB(min, max, callback) {
 
-    // loop through the IDs provided in the process arguments
+    // loop through the IDs provided in the process.argv
     for (let i = min; i <= max; i++) {
 
         new Game({ 'game_id': `${i}` })
             .fetch()
             .then(result => {
 
-                // If can't find in local DB push to our toScrape array
+                // ID not found in the DB
                 if (result === null) {
-                    toScrape.push(Number(i));
+
+                    // push the ID to the 'toScrape' array
+                    toCheck.push(Number(i));
+                    // increase the counter
+                    checkCounter += 1;
+                    // return the current index
+                    return i;
                 }
 
-                // Otherwise push to our toUpdate array
+                // ID found in the DB
                 else {
+
+                    // push the ID to the 'toUpdate' array
                     toUpdate.push(Number(i));
+                    // increase the counter
+                    updateCounter += 1;
+                    // return the current index
+                    return i;
                 }
 
             })
-            .then(results => {
+
+            .then(currentIndex => {
 
                 // If i === max it's the last ID we are looking through
                 // so we can stop the process here
-                if (i == max) {
+                if (currentIndex == max) {
 
                     // print out which games are to be scraped
-                    console.log('There are', toScrape.length, 'games to scrape. List:', toScrape);
-                    console.log('There are', toUpdate.length, 'games to update. List:', toUpdate);
+                    console.log(`\n There are ${checkCounter} games to check.`);
+                    console.log(`\n There are ${updateCounter} games to update.`);
 
                     // hit the callback
-                    return callback(toScrape);
+                    return callback();
                 }
 
             })
+
             .catch(error => {
+
+                // Log any errors with this function
                 console.log('Checking local DB error:', error);
             })
 
@@ -105,20 +125,18 @@ function checkCurrentDB(min, max, callback) {
 }
 
 
-function getData(id) {
+function getDataAndSave(id) {
 
     // Hit the BGG API (with stats turned on)
     axios.get('https://www.boardgamegeek.com/xmlapi2/thing?id=' + id + '&stats=1')
     
          .then(result => {
 
-            // Initialize parser
-            // let parser = new DOMParser();
             // Save data/xml from BGG into a variable
             let xml = result.data;
 
             // new Game object
-            let gameToSave = {};
+            let gameObject = {};
 
             parseString(xml, function(err, result) {
 
@@ -128,188 +146,113 @@ function getData(id) {
 
                 // First make sure something exists at this ID
                 if (result.items.item === undefined) {
-                    console.log('ID:', id, 'doesn\'t exist');
-                    return 0;
+                    console.log(`${id} does not exist`);
+                    return;
+                }
+
+                // Then make sure item we are parsing is a BoardGame
+                if (result.items.item[0].$.type !== "boardgame") {
+                    console.log(`${id} is not a boardgame.`);
+                    return;
                 }
 
                 // Otherwise save the main game object into a variable
-                let gameObject = result.items.item[0];
-
-                // Then make sure item we are parsing is a BoardGame
-                if (gameObject.$.type !== "boardgame") {
-                    console.log('ID:', id, 'is not a boardgame.');
-                    return 0;
-                }
-
-                // console.log(JSON.stringify(result));
-                // console.log(gameObject.statistics[0].ratings[0].average[0].$.value);
-
-                // Game
-                gameToSave = {
-                    rank: Number(gameObject.statistics[0].ratings[0].ranks[0].rank[0].$.value) || 0,
-                    bgg_link: 'https://www.boardgamegeek.com/boardgame/' + id + '/',
-                    game_id: id,
-                    names: gameObject.name[0].$.value,
-                    image_url: gameObject.image[0] || '',
-                    min_players: Number(gameObject.minplayers[0].$.value) || 1,
-                    max_players: Number(gameObject.maxplayers[0].$.value) || 1,
-                    min_time: Number(gameObject.minplaytime[0].$.value) || 1,
-                    max_time: Number(gameObject.maxplaytime[0].$.value) || 1,
-                    avg_time: Number(gameObject.playingtime[0].$.value) || 1,
-                    year: Number(gameObject.yearpublished[0].$.value),
-                    age: 0,
-                    mechanic: '',
-                    category: '',
-                    avg_rating: Number(gameObject.statistics[0].ratings[0].average[0].$.value) || 0,
-                    geek_rating: Number(gameObject.statistics[0].ratings[0].bayesaverage[0].$.value) || 0,
-                    num_votes: Number(gameObject.statistics[0].ratings[0].usersrated[0].$.value) || 0,
-                }
-
-
-                // Game age
-                // Check if year published is greater than 0
-                // If it is calculate the age, if not set age to 0
-                gameToSave.age = gameObject.yearpublished[0].$.value > 0 ? (new Date().getFullYear() - gameObject.yearpublished[0].$.value) : 0;
-
-                // Mechanics and categories
-                let mechanicsAndCategories = gameObject.link;
-
-                // Loop through the categories and mechanics
-                for (let i = 0; i < mechanicsAndCategories.length; i++) {
-                    
-                    // If it's a category
-                    // Save to category string in game object
-                    if (mechanicsAndCategories[i].$.type === "boardgamecategory") {
-                        gameToSave.category += mechanicsAndCategories[i].$.value + ', ';
-
-                    // If it's a mechanic
-                    // Save to mechanic string in game object
-                    } else if (mechanicsAndCategories[i].$.type === "boardgamemechanic") {
-                        gameToSave.mechanic += mechanicsAndCategories[i].$.value + ', ';
-                    }
-
-                }
+                gameObject = result.items.item[0];
 
             }) // end parseString()
+
+            // BGG doesn't send age, and sends mechanics/categories as individual items
+            // Need to set those as variables here
+
+            // Game age
+            // Check if year published is greater than 0
+            // If it is calculate the age, if not set age to 0
+            let gameAge = gameObject.yearpublished[0].$.value > 0 ? (new Date().getFullYear() - gameObject.yearpublished[0].$.value) : 0;
+
+            // Mechanics and categories
+            let gameCategories = '';
+            let gameMechanics = '';
+
+            // Loop through the categories and mechanics
+            for (let i = 0; i < gameObject.link.length; i++) {
+                
+                // If it's a category
+                // Save to category string in game object
+                if (gameObject.link[i].$.type === "boardgamecategory") {
+                    gameCategories += gameObject.link[i].$.value + ', ';
+
+                // If it's a mechanic
+                // Save to mechanic string in game object
+                } else if (gameObject.link[i].$.type === "boardgamemechanic") {
+                    gameMechanics += gameObject.link[i].$.value + ', ';
+                }
+
+            }
+
+                
+            // console.log(JSON.stringify(result));
+            // console.log(gameObject.statistics[0].ratings[0].average[0].$.value);
+
+            // Create an object for new game and save to DB
+            let gameToSave = new Game ({
+                rank: Number(gameObject.statistics[0].ratings[0].ranks[0].rank[0].$.value) || 0,
+                bgg_link: 'https://www.boardgamegeek.com/boardgame/' + id + '/',
+                game_id: id,
+                names: gameObject.name[0].$.value,
+                image_url: gameObject.image[0] || '',
+                min_players: Number(gameObject.minplayers[0].$.value) || 1,
+                max_players: Number(gameObject.maxplayers[0].$.value) || 1,
+                min_time: Number(gameObject.minplaytime[0].$.value) || 1,
+                max_time: Number(gameObject.maxplaytime[0].$.value) || 1,
+                avg_time: Number(gameObject.playingtime[0].$.value) || 1,
+                year: Number(gameObject.yearpublished[0].$.value),
+                age: gameAge || 0,
+                mechanic: gameMechanics,
+                category: gameCategories,
+                avg_rating: Number(gameObject.statistics[0].ratings[0].average[0].$.value) || 0,
+                geek_rating: Number(gameObject.statistics[0].ratings[0].bayesaverage[0].$.value) || 0,
+                num_votes: Number(gameObject.statistics[0].ratings[0].usersrated[0].$.value) || 0,
+            });
+
             
-            // See what our object looks like
-            // console.log(gameToSave);
-            return gameToSave;
+            // Save the game we just got from BGG into the DB
+            return gameToSave.save(null, {method: 'insert'});
 
          })
 
-         .then(gameToSave => {
+         .then(savedGame => {
+            
+            // increase the saved games counter
+            savedCounter += 1;
 
-            // if the name is undefined it means there was nothing found at this id
-            // so don't run saveData() on this id
-            if (gameToSave.names === undefined) {
-
-                // step up counter because this ID has been been scraped
-                counter += 1;
-                // getData(toScrape[counter]);
-                return;
-
-            // Otherwise log which game we're saving and run saveData on it
-            } else {
-                console.log("Gonna save:", id, 'titled', gameToSave.names, 'to DB. It is for a max of', gameToSave.max_players, 'players');
-                saveData(gameToSave);
-                return gameToSave.game_id;
-            }
+            // log the output
+            console.log(`${savedGame.attributes.names} was saved.`);
 
          })
 
          .catch(error => {
-             console.log(error);
+
+            // log any errors
+            console.log('getDataAndSave ERROR:', error);
+
          })
 
 }
 
-function saveData(game) {
 
-    // just passing the object was not working, had to pass in every attribute of the object
-    let newGame = new Game ({
-        rank: game.rank,
-        bgg_link: game.bgg_link,
-        game_id: game.game_id,
-        names: game.names,
-        image_url: game.image_url,
-        min_players: game.min_players,
-        max_players: game.max_players,
-        min_time: game.min_time,
-        max_time: game.max_time,
-        avg_time: game.avg_time,
-        year: game.year,
-        age: game.age,
-        mechanic: game.mechanic,
-        category: game.category,
-        avg_rating: game.avg_rating,
-        geek_rating: game.geek_rating,
-        num_votes: game.num_votes,
-    });
 
-    // Save the game to the DB
-    // use insert method to ensure it's always inserting a new record at a new DB ID
-    newGame.save(null, {method: 'insert'})
-        
-        .then(savedGame => {
 
-            // step both counters up because this id has been scraped AND saved
-            counter += 1;
-            savedCounter += 1;
-
-            // next()
-            // getData(toScrape[counter]);
-
-            // print out what we saved to DB
-            // console.log('Saved to DB:', savedGame);
-
-        })
-        
-        .catch(error => {
-            console.log('Error saving to DB', error);
-        });
-
-}
-
-function processArray(maxLoops) {
-
-    if (counter >= maxLoops) {
-        console.log('Saved a total of', counter, 'games.');
-        process.exit();
-        return;
-    }
-
-    setTimeout(function() {
-        getData(toScrape[counter]);
-    }, 2000);
-
-}
-
-// First, check if we already have an of these IDs in the DB already
 checkCurrentDB(minRange, maxRange, () => {
-
-    // After we've looped through all the IDs and pushed only IDs that are not in the local DB
-    // loop through each ID we don't have and scrape from BGG, then save to DB
-    toScrape.forEach((id) => {
-        // setTimeout(getData, 2000, id);
-        getData(id);
-    });
-
-    // if (counter >= toScrape.length) {
-    //     console.log('Saved a total of', counter, 'games.');
-    //     process.exit();
-    // }
-
-    // getData(toScrape[counter]);
+    
+    (function theLoop(i) {
+        setTimeout(function() {
+            getDataAndSave(toCheck[i]);
+            // console.log('Hi');
+            if (--i) { theLoop(i) } else { process.exit(); }
+        }, 2000)
+    })(toCheck.length)
 
 });
-
-// while(counter > toScrape.length) {}
-// exit the process
-// process.exit();
-
-
-
 
 
 
